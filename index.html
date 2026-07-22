@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>МЕМО</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; overflow:hidden; background:#1e1e2e; touch-action:none; position:fixed; }
+#game-container { width:100vw; height:100vh; display:flex; justify-content:center; align-items:center; background:#1e1e2e; }
+#gameCanvas { display:block; border:2px solid #ffc707; border-radius:15px; touch-action:none; cursor:pointer; width:min(100vw,100vh); height:min(100vw,100vh); max-width:1280px; max-height:720px; aspect-ratio:16/9; }
+#loading { position:fixed; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#1e1e2e; z-index:1000; color:#ffc707; font-size:24px; }
+.spinner { width:50px; height:50px; border:4px solid #333; border-top:4px solid #ffc707; border-radius:50%; animation:spin 1s linear infinite; margin-bottom:20px; }
+@keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+#load-status { font-size:16px; color:#888; margin-top:10px; }
+#load-bar { width:200px; height:4px; background:#333; border-radius:2px; margin-top:15px; overflow:hidden; }
+#load-bar-fill { width:0%; height:100%; background:#ffc707; border-radius:2px; transition:width 0.3s ease; }
+@media (orientation:portrait) { #gameCanvas { width:100vw; height:calc(100vw * 9 / 16); max-height:100vh; } }
+@media (orientation:landscape) { #gameCanvas { height:100vh; width:calc(100vh * 16 / 9); max-width:100vw; } }
+</style>
+</head>
+<body>
+<div id="loading"><div class="spinner"></div><div>🔄 Загрузка...</div><div id="load-status">Инициализация</div><div id="load-bar"><div id="load-bar-fill"></div></div></div>
+<div id="game-container"><canvas id="gameCanvas"></canvas></div>
+<script>
+// ============================================================
+// === ОБЩИЕ НАСТРОЙКИ
+// ============================================================
+var W=1280, H=720, S=1;
+function sc(v){ return Math.floor(v*S); }
+function rgb(a){ return 'rgb('+a[0]+','+a[1]+','+a[2]+')'; }
+var COL={ CARD_BACK:[250,150,0], CARD_FRONT:[255,199,7], BTN:[255,179,7], BTN_H:[255,200,50], GREEN:[166,227,161], HIGHLIGHT:[249,226,175], MENU_BG:[40,40,60], TEXT:[255,214,0] };
+
+var cv=document.getElementById('gameCanvas'), ctx=cv.getContext('2d');
+cv.width=W; cv.height=H; S=Math.min(W/1920,H/1080); S=Math.max(0.5,Math.min(1,S));
+
+function up(s,p){ var st=document.getElementById('load-status'); var b=document.getElementById('load-bar-fill'); if(st) st.textContent=s; if(b) b.style.width=Math.min(100,p||0)+'%'; }
+up('Загрузка',5);
+
+// ============================================================
+// === ПУТИ (ТВОИ!)
+// ============================================================
+var IMG_PATH = 'images/';
+var IMG_PREFIX = 'image';
+var IMG_EXT = '.png';
+var IMG_COUNT = 15;
+
+var SND_PATH = 'sounds/';
+var SND_PREFIX = 'sound';
+var SND_EXT = '.ogg';
+var SND_COUNT = 15;
+
+var MUSIC_PATH = 'music/';
+var MUSIC_FILE = 'Party_Tunes_Brainrot_Rap.ogg';
+
+var BG_MENU = 'images/фон2.png';
+var BG_GAME = 'images/фон1.png';
+
+// ============================================================
+// === ЗАГРУЗКА
+// ============================================================
+var images={}, sounds={}, bgMusic=null, bgMenu=null, bgGame=null;
+var loaded=0, total=0;
+
+function loadAll(cb){
+    total = IMG_COUNT + SND_COUNT + 3 + 1;
+    for(var i=1;i<=IMG_COUNT;i++){
+        var name=IMG_PREFIX+i+IMG_EXT, img=new Image();
+        img.onload=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+        img.onerror=function(){ loaded++; if(loaded>=total) cb(); };
+        img.src=IMG_PATH+name; images[name]=img;
+    }
+    for(var i=1;i<=SND_COUNT;i++){
+        var name=SND_PREFIX+i+SND_EXT, snd=new Audio();
+        snd.oncanplaythrough=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+        snd.onerror=function(){ loaded++; if(loaded>=total) cb(); };
+        snd.src=SND_PATH+name; sounds[name]=snd;
+    }
+    var win=new Audio();
+    win.oncanplaythrough=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    win.onerror=function(){ loaded++; if(loaded>=total) cb(); };
+    win.src=SND_PATH+'win.ogg'; sounds['win.ogg']=win;
+
+    bgMenu=new Image(); bgMenu.onload=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    bgMenu.onerror=function(){ loaded++; if(loaded>=total) cb(); }; bgMenu.src=BG_MENU;
+
+    bgGame=new Image(); bgGame.onload=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    bgGame.onerror=function(){ loaded++; if(loaded>=total) cb(); }; bgGame.src=BG_GAME;
+
+    bgMusic=new Audio(); bgMusic.loop=true; bgMusic.volume=0.3;
+    bgMusic.oncanplaythrough=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    bgMusic.onerror=function(){ loaded++; if(loaded>=total) cb(); }; bgMusic.src=MUSIC_PATH+MUSIC_FILE;
+}
+
+// ============================================================
+// === КАРТОЧКА
+// ============================================================
+function Card(x,y,pairId,w,h){
+    this.x=x; this.y=y; this.w=w; this.h=h; this.pairId=pairId;
+    this.flipped=false; this.matched=false;
+    this.img=images[IMG_PREFIX+(pairId+1)+IMG_EXT]||null;
+    this.snd=sounds[SND_PREFIX+(pairId+1)+SND_EXT]||null;
+}
+Card.prototype.draw=function(ctx){
+    var r=sc(10);
+    if(this.matched){ ctx.fillStyle=rgb(COL.GREEN); this.rr(ctx,r); ctx.fill(); if(this.img) try{ ctx.drawImage(this.img,this.x+sc(5),this.y+sc(5),this.w-sc(10),this.h-sc(10)); }catch(e){} return; }
+    if(this.flipped){ ctx.fillStyle=rgb(COL.CARD_FRONT); this.rr(ctx,r); ctx.fill(); if(this.img) try{ ctx.drawImage(this.img,this.x+sc(5),this.y+sc(5),this.w-sc(10),this.h-sc(10)); }catch(e){} return; }
+    ctx.fillStyle=rgb(COL.CARD_BACK); this.rr(ctx,r); ctx.fill();
+    ctx.strokeStyle=rgb(COL.CARD_FRONT); ctx.lineWidth=sc(3); this.rr(ctx,r); ctx.stroke();
+    ctx.fillStyle=rgb(COL.CARD_BACK); ctx.font='bold '+sc(50)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('?',this.x+this.w/2,this.y+this.h/2);
+};
+Card.prototype.rr=function(ctx,r){ var x=this.x,y=this.y,w=this.w,h=this.h; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); };
+Card.prototype.isClicked=function(px,py){ return px>=this.x&&px<=this.x+this.w&&py>=this.y&&py<=this.y+this.h; };
+Card.prototype.playFlip=function(){ if(this.snd) try{ this.snd.play(); }catch(e){} };
+Card.prototype.playMatch=function(){ if(this.snd) try{ this.snd.play(); }catch(e){} };
+
+// ============================================================
+// === ИГРА
+// ============================================================
+var game=null, state='main_menu', mouse={x:0,y:0};
+
+function Game(rows,cols){
+    this.rows=rows; this.cols=cols; this.total=(rows*cols)/2;
+    this.cards=[]; this.flipped=[]; this.moves=0; this.matched=0;
+    this.start=Date.now(); this.elapsed=0; this.over=false; this.blocked=false;
+    this.create();
+}
+Game.prototype.create=function(){
+    var pairs=[]; for(var i=0;i<this.total;i++){ pairs.push(i); pairs.push(i); }
+    for(var i=pairs.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pairs[i]; pairs[i]=pairs[j]; pairs[j]=t; }
+    var cw=cv.width, ch=cv.height;
+    var pad=Math.max(20,Math.min(60,cw*0.04)), top=Math.max(70,ch*0.1);
+    var aw=cw-pad*2, ah=ch-top-pad*2;
+    var mar=Math.max(4,Math.min(12,cw*0.01));
+    var cw2=(aw-(this.cols-1)*mar)/this.cols;
+    var ch2=(ah-(this.rows-1)*mar)/this.rows;
+    var ideal=cw2*0.68; if(ideal>ch2){ cw2=ch2/0.68; ch2=ideal; }else{ ch2=ideal; }
+    var tw=this.cols*cw2+(this.cols-1)*mar, th=this.rows*ch2+(this.rows-1)*mar;
+    var sx=(cw-tw)/2, sy=(ch-th)/2+top*0.35;
+    this.cards=[]; var idx=0;
+    for(var r=0;r<this.rows;r++){ for(var c=0;c<this.cols;c++){ var x=sx+c*(cw2+mar); var y=sy+r*(ch2+mar); this.cards.push(new Card(x,y,pairs[idx],cw2,ch2)); idx++; } }
+};
+Game.prototype.draw=function(ctx){
+    if(bgGame && bgGame.complete && bgGame.naturalWidth>0) ctx.drawImage(bgGame,0,0,W,H);
+    else { var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1e1e2e'); g.addColorStop(1,'#2a2a3e'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+    ctx.fillStyle='#000'; ctx.font='bold '+sc(50)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('МЕМО',W/2+sc(2),sc(23)); ctx.fillStyle=rgb(COL.BTN); ctx.fillText('МЕМО',W/2,sc(20));
+    for(var i=0;i<this.cards.length;i++) this.cards[i].draw(ctx);
+    var p={x:sc(20),y:sc(20),w:W-sc(40),h:sc(70)}; ctx.fillStyle=rgb(COL.CARD_BACK); ctx.beginPath(); ctx.moveTo(p.x+sc(15),p.y); ctx.quadraticCurveTo(p.x+p.w,p.y,p.x+p.w,p.y+sc(15)); ctx.quadraticCurveTo(p.x+p.w,p.y+p.h,p.x+p.w-sc(15),p.y+p.h); ctx.quadraticCurveTo(p.x,p.y+p.h,p.x,p.y+p.h-sc(15)); ctx.quadraticCurveTo(p.x,p.y,p.x+sc(15),p.y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#000'; ctx.font=sc(18)+'px Arial'; ctx.textBaseline='middle'; ctx.textAlign='left'; ctx.fillText('Время: '+Math.floor(this.elapsed)+'с',sc(40),sc(52)); ctx.textAlign='center'; ctx.fillText('Ходы: '+this.moves,W/2,sc(52)); ctx.textAlign='right'; ctx.fillText('Пар: '+this.matched+'/'+this.total,W-sc(40),sc(52));
+    var by=H-sc(70), bw=sc(130), bh=sc(45), bx1=W-sc(460), bx2=W-sc(310);
+    var btns=[{x:bx1,t:'Новая'},{x:bx2,t:'В меню'}];
+    for(var b=0;b<btns.length;b++){ var bx=btns[b].x; var hov=mouse.x>=bx&&mouse.x<=bx+bw&&mouse.y>=by&&mouse.y<=by+bh; ctx.fillStyle=hov?rgb(COL.BTN_H):rgb(COL.BTN); ctx.beginPath(); ctx.moveTo(bx+sc(10),by); ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+sc(10)); ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-sc(10),by+bh); ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-sc(10)); ctx.quadraticCurveTo(bx,by,bx+sc(10),by); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font=sc(18)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(btns[b].t,bx+bw/2,by+bh/2); }
+    if(this.over) this.drawWin(ctx);
+};
+Game.prototype.drawWin=function(ctx){
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,W,H);
+    var ww=sc(450),wh=sc(250), wx=(W-ww)/2, wy=(H-wh)/2;
+    ctx.fillStyle=rgb(COL.MENU_BG); ctx.beginPath(); ctx.moveTo(wx+sc(20),wy); ctx.quadraticCurveTo(wx+ww,wy,wx+ww,wy+sc(20)); ctx.quadraticCurveTo(wx+ww,wy+wh,wx+ww-sc(20),wy+wh); ctx.quadraticCurveTo(wx,wy+wh,wx,wy+wh-sc(20)); ctx.quadraticCurveTo(wx,wy,wx+sc(20),wy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle=rgb(COL.HIGHLIGHT); ctx.font='bold '+sc(36)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('ПОБЕДА!',W/2,wy+sc(70));
+    ctx.fillStyle=rgb(COL.TEXT); ctx.font=sc(20)+'px Arial'; ctx.fillText('Время: '+Math.floor(this.elapsed)+'с',W/2,wy+sc(120)); ctx.fillText('Ходы: '+this.moves,W/2,wy+sc(160));
+    if(sounds['win.ogg']) try{ sounds['win.ogg'].play(); }catch(e){}
+};
+Game.prototype.update=function(){ if(!this.over) this.elapsed=(Date.now()-this.start)/1000; };
+Game.prototype.click=function(px,py){
+    var by=H-sc(70), bw=sc(130), bh=sc(45), bx1=W-sc(460), bx2=W-sc(310);
+    if(px>=bx1&&px<=bx1+bw&&py>=by&&py<=by+bh){ this.create(); this.flipped=[]; this.moves=0; this.matched=0; this.start=Date.now(); this.over=false; this.blocked=false; return 'game'; }
+    if(px>=bx2&&px<=bx2+bw&&py>=by&&py<=by+bh) return 'menu';
+    if(this.over||this.blocked) return 'game';
+    for(var i=0;i<this.cards.length;i++){ var c=this.cards[i]; if(c.isClicked(px,py)&&!c.matched&&!c.flipped){ if(this.flipped.length>=2) return 'game'; c.flipped=true; c.playFlip(); this.flipped.push(c); } }
+    if(this.flipped.length===2){ this.blocked=true; this.moves++; var c1=this.flipped[0], c2=this.flipped[1]; if(c1.pairId===c2.pairId){ c1.matched=true; c2.matched=true; c1.playMatch(); this.matched++; this.flipped=[]; this.blocked=false; if(this.matched===this.total) this.over=true; }else{ var self=this; setTimeout(function(){ for(var i=0;i<self.flipped.length;i++){ if(!self.flipped[i].matched) self.flipped[i].flipped=false; } self.flipped=[]; self.blocked=false; },500); } }
+    return 'game';
+};
+
+// ============================================================
+// === МЕНЮ
+// ============================================================
+function MainMenu(){
+    this.play=null; this.lb=null;
+}
+MainMenu.prototype.draw=function(ctx){
+    if(bgMenu && bgMenu.complete && bgMenu.naturalWidth>0) ctx.drawImage(bgMenu,0,0,W,H);
+    else { var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1e1e2e'); g.addColorStop(1,'#2a2a3e'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+    ctx.fillStyle='#000'; ctx.font='bold '+sc(70)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('МЕМО',W/2+sc(3),sc(120)); ctx.fillStyle=rgb(COL.BTN); ctx.fillText('МЕМО',W/2,sc(117));
+    var bw=sc(350), bh=sc(80), bx=(W-bw)/2, by=sc(400);
+    var h1=mouse.x>=bx&&mouse.x<=bx+bw&&mouse.y>=by&&mouse.y<=by+bh;
+    ctx.fillStyle=h1?rgb(COL.BTN_H):rgb(COL.BTN); ctx.beginPath(); ctx.moveTo(bx+sc(20),by); ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+sc(20)); ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-sc(20),by+bh); ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-sc(20)); ctx.quadraticCurveTo(bx,by,bx+sc(20),by); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font='bold '+sc(36)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('ИГРАТЬ',bx+bw/2,by+bh/2);
+    var by2=by+bh+sc(20); var h2=mouse.x>=bx&&mouse.x<=bx+bw&&mouse.y>=by2&&mouse.y<=by2+bh;
+    ctx.fillStyle=h2?rgb(COL.BTN_H):rgb(COL.BTN); ctx.beginPath(); ctx.moveTo(bx+sc(20),by2); ctx.quadraticCurveTo(bx+bw,by2,bx+bw,by2+sc(20)); ctx.quadraticCurveTo(bx+bw,by2+bh,bx+bw-sc(20),by2+bh); ctx.quadraticCurveTo(bx,by2+bh,bx,by2+bh-sc(20)); ctx.quadraticCurveTo(bx,by2,bx+sc(20),by2); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font='bold '+sc(28)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('РЕКОРДЫ',bx+bw/2,by2+bh/2);
+    this.play={x:bx,y:by,w:bw,h:bh}; this.lb={x:bx,y:by2,w:bw,h:bh};
+};
+MainMenu.prototype.click=function(px,py){
+    if(this.play&&px>=this.play.x&&px<=this.play.x+this.play.w&&py>=this.play.y&&py<=this.play.y+this.play.h) return 'difficulty';
+    if(this.lb&&px>=this.lb.x&&px<=this.lb.x+this.lb.w&&py>=this.lb.y&&py<=this.lb.y+this.lb.h) return 'leaderboard';
+    return 'main_menu';
+};
+
+// ============================================================
+// === ВЫБОР СЛОЖНОСТИ
+// ============================================================
+function DiffMenu(){
+    this.opts=[
+        {t:'Лёгкий', r:3, c:4, s:true},
+        {t:'Средний', r:4, c:4, s:false},
+        {t:'Сложный', r:4, c:5, s:false},
+        {t:'Эксперт', r:5, c:6, s:false}
+    ];
+    this.start=null; this.back=null;
+}
+DiffMenu.prototype.draw=function(ctx){
+    if(bgGame && bgGame.complete && bgGame.naturalWidth>0) ctx.drawImage(bgGame,0,0,W,H);
+    else { var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1e1e2e'); g.addColorStop(1,'#2a2a3e'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+    ctx.fillStyle='#000'; ctx.font='bold '+sc(45)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('ВЫБЕРИТЕ СЛОЖНОСТЬ',W/2+sc(3),sc(110)); ctx.fillStyle=rgb(COL.BTN); ctx.fillText('ВЫБЕРИТЕ СЛОЖНОСТЬ',W/2,sc(107));
+    var bw=sc(400), bh=sc(70), sy=sc(230);
+    for(var i=0;i<this.opts.length;i++){ var o=this.opts[i]; var x=(W-bw)/2; var y=sy+i*(bh+sc(15)); o.rect={x:x,y:y,w:bw,h:bh}; var hov=mouse.x>=x&&mouse.x<=x+bw&&mouse.y>=y&&mouse.y<=y+bh; var col=o.s?COL.BTN_H:COL.BTN; ctx.fillStyle=rgb(col); ctx.beginPath(); ctx.moveTo(x+sc(15),y); ctx.quadraticCurveTo(x+bw,y,x+bw,y+sc(15)); ctx.quadraticCurveTo(x+bw,y+bh,x+bw-sc(15),y+bh); ctx.quadraticCurveTo(x,y+bh,x,y+bh-sc(15)); ctx.quadraticCurveTo(x,y,x+sc(15),y); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font='bold '+sc(26)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(o.t,x+bw/2,y+bh/2); }
+    var sy2=sy+this.opts.length*(bh+sc(15))+sc(40), sx=(W-sc(300))/2; this.start={x:sx,y:sy2,w:sc(300),h:sc(60)}; var hov=mouse.x>=sx&&mouse.x<=sx+sc(300)&&mouse.y>=sy2&&mouse.y<=sy2+sc(60); ctx.fillStyle=hov?rgb(COL.BTN_H):rgb(COL.BTN); ctx.beginPath(); ctx.moveTo(sx+sc(15),sy2); ctx.quadraticCurveTo(sx+sc(300),sy2,sx+sc(300),sy2+sc(15)); ctx.quadraticCurveTo(sx+sc(300),sy2+sc(60),sx+sc(300)-sc(15),sy2+sc(60)); ctx.quadraticCurveTo(sx,sy2+sc(60),sx,sy2+sc(60)-sc(15)); ctx.quadraticCurveTo(sx,sy2,sx+sc(15),sy2); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font='bold '+sc(26)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('НАЧАТЬ ИГРУ',sx+sc(150),sy2+sc(30));
+    var bx=(W-sc(150))/2, by=H-sc(120); this.back={x:bx,y:by,w:sc(150),h:sc(50)}; var bh2=mouse.x>=bx&&mouse.x<=bx+sc(150)&&mouse.y>=by&&mouse.y<=by+sc(50); ctx.fillStyle=bh2?rgb(COL.BTN_H):rgb(COL.BTN); ctx.beginPath(); ctx.moveTo(bx+sc(10),by); ctx.quadraticCurveTo(bx+sc(150),by,bx+sc(150),by+sc(10)); ctx.quadraticCurveTo(bx+sc(150),by+sc(50),bx+sc(150)-sc(10),by+sc(50)); ctx.quadraticCurveTo(bx,by+sc(50),bx,by+sc(50)-sc(10)); ctx.quadraticCurveTo(bx,by,bx+sc(10),by); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font=sc(22)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('Назад',bx+sc(75),by+sc(25));
+};
+DiffMenu.prototype.click=function(px,py){
+    if(this.back&&px>=this.back.x&&px<=this.back.x+this.back.w&&py>=this.back.y&&py<=this.back.y+this.back.h) return 'main_menu';
+    for(var i=0;i<this.opts.length;i++){ var o=this.opts[i]; if(o.rect&&px>=o.rect.x&&px<=o.rect.x+o.rect.w&&py>=o.rect.y&&py<=o.rect.y+o.rect.h){ for(var j=0;j<this.opts.length;j++) this.opts[j].s=false; o.s=true; return 'difficulty'; } }
+    if(this.start&&px>=this.start.x&&px<=this.start.x+this.start.w&&py>=this.start.y&&py<=this.start.y+this.start.h){ for(var i=0;i<this.opts.length;i++){ if(this.opts[i].s) return {r:this.opts[i].r,c:this.opts[i].c}; } }
+    return 'difficulty';
+};
+
+// ============================================================
+// === РЕКОРДЫ
+// ============================================================
+function Leaderboard(){
+    this.scores=[]; this.close=null; this.load();
+}
+Leaderboard.prototype.load=function(){ try{ var d=localStorage.getItem('memo_scores'); this.scores=d?JSON.parse(d):[]; }catch(e){ this.scores=[]; } };
+Leaderboard.prototype.save=function(){ try{ localStorage.setItem('memo_scores',JSON.stringify(this.scores)); }catch(e){} };
+Leaderboard.prototype.add=function(n,t,m){ this.scores.push({name:n,time:t,moves:m,date:new Date().toLocaleDateString()}); this.scores.sort(function(a,b){ return a.time-b.time; }); if(this.scores.length>20) this.scores=this.scores.slice(0,20); this.save(); };
+Leaderboard.prototype.draw=function(ctx){
+    if(bgGame && bgGame.complete && bgGame.naturalWidth>0) ctx.drawImage(bgGame,0,0,W,H);
+    else { var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1e1e2e'); g.addColorStop(1,'#2a2a3e'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+    ctx.fillStyle='rgba(0,0,0,0.8)'; ctx.fillRect(0,0,W,H);
+    var bw=sc(600), bh=sc(450), bx=(W-bw)/2, by=(H-bh)/2;
+    ctx.fillStyle=rgb(COL.MENU_BG); ctx.beginPath(); ctx.moveTo(bx+sc(20),by); ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+sc(20)); ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-sc(20),by+bh); ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-sc(20)); ctx.quadraticCurveTo(bx,by,bx+sc(20),by); ctx.closePath(); ctx.fill(); ctx.strokeStyle=rgb(COL.HIGHLIGHT); ctx.lineWidth=sc(3); ctx.stroke();
+    ctx.fillStyle=rgb(COL.HIGHLIGHT); ctx.font='bold '+sc(32)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('🏆 РЕКОРДЫ',W/2,by+sc(20));
+    var s=this.scores.slice(0,10);
+    if(s.length===0){ ctx.fillStyle='#888'; ctx.font=sc(24)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('Нет рекордов',W/2,by+bh/2); }
+    else { ctx.fillStyle='#fff'; ctx.font=sc(18)+'px Arial'; ctx.textAlign='left'; ctx.textBaseline='top'; for(var i=0;i<s.length;i++){ var sc=s[i]; var y=by+sc(80)+i*sc(36); var m=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'; ctx.fillText(m+' '+sc.name+' — '+sc.time+'с ('+sc.moves+' х)',bx+sc(30),y); } }
+    var cx=bx+bw-sc(120), cy=by+bh-sc(60); this.close={x:cx,y:cy,w:sc(100),h:sc(40)}; var hov=mouse.x>=cx&&mouse.x<=cx+sc(100)&&mouse.y>=cy&&mouse.y<=cy+sc(40); ctx.fillStyle=hov?rgb(COL.BTN_H):rgb(COL.BTN); ctx.beginPath(); ctx.moveTo(cx+sc(10),cy); ctx.quadraticCurveTo(cx+sc(100),cy,cx+sc(100),cy+sc(10)); ctx.quadraticCurveTo(cx+sc(100),cy+sc(40),cx+sc(100)-sc(10),cy+sc(40)); ctx.quadraticCurveTo(cx,cy+sc(40),cx,cy+sc(40)-sc(10)); ctx.quadraticCurveTo(cx,cy,cx+sc(10),cy); ctx.closePath(); ctx.fill(); ctx.fillStyle='#000'; ctx.font=sc(18)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('Назад',cx+sc(50),cy+sc(20));
+};
+Leaderboard.prototype.click=function(px,py){ if(this.close&&px>=this.close.x&&px<=this.close.x+this.close.w&&py>=this.close.y&&py<=this.close.y+this.close.h) return 'close'; return null; };
+
+// ============================================================
+// === МУЗЫКА
+// ============================================================
+var musicOff=false, musicBtn={x:0,y:0,w:0,h:0};
+var musicOffImg=null;
+function loadMusicOff(){
+    var img=new Image(); img.src='images/music-off.png'; musicOffImg=img;
+}
+function drawMusic(ctx){
+    var r=sc(35), mar=sc(20), cx=W-mar-r, cy=H-mar-r;
+    musicBtn={x:cx-r,y:cy-r,w:r*2,h:r*2};
+    var hov=mouse.x>=musicBtn.x&&mouse.x<=musicBtn.x+musicBtn.w&&mouse.y>=musicBtn.y&&mouse.y<=musicBtn.y+musicBtn.h;
+    ctx.fillStyle=hov?rgb(COL.BTN_H):rgb(COL.BTN);
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=rgb(COL.CARD_FRONT); ctx.lineWidth=sc(3); ctx.stroke();
+    if(musicOff && musicOffImg && musicOffImg.complete && musicOffImg.naturalWidth>0){
+        try{ ctx.drawImage(musicOffImg,cx-sc(20),cy-sc(20),sc(40),sc(40)); }catch(e){}
+    } else {
+        ctx.fillStyle='#000'; ctx.font=sc(30)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(musicOff?'🔇':'♫',cx,cy+sc(2));
+    }
+}
+function toggleMusic(){
+    musicOff=!musicOff;
+    if(bgMusic){ if(musicOff) bgMusic.pause(); else bgMusic.play().catch(function(){}); }
+}
+
+// ============================================================
+// === ЗАПУСК
+// ============================================================
+loadMusicOff();
+loadAll(function(){
+    up('Готово!',100);
+    setTimeout(function(){ var l=document.getElementById('loading'); if(l) l.style.display='none'; },300);
+    var main=new MainMenu(), diff=new DiffMenu(), lb=new Leaderboard();
+    function loop(){
+        try {
+            ctx.clearRect(0,0,W,H);
+            if(state==='main_menu') main.draw(ctx);
+            else if(state==='difficulty') diff.draw(ctx);
+            else if(state==='leaderboard') lb.draw(ctx);
+            else if(state==='game' && game){ game.update(); game.draw(ctx); }
+            drawMusic(ctx);
+            requestAnimationFrame(loop);
+        } catch(e){ console.error(e); }
+    }
+    function click(px,py){
+        mouse.x=px; mouse.y=py;
+        if(px>=musicBtn.x&&px<=musicBtn.x+musicBtn.w&&py>=musicBtn.y&&py<=musicBtn.y+musicBtn.h){ toggleMusic(); return; }
+        try {
+            if(state==='main_menu'){ var r=main.click(px,py); if(r==='difficulty') state='difficulty'; else if(r==='leaderboard'){ lb.load(); state='leaderboard'; } }
+            else if(state==='difficulty'){ var r=diff.click(px,py); if(r==='main_menu') state='main_menu'; else if(typeof r==='object'){ game=new Game(r.r,r.c); state='game'; } }
+            else if(state==='leaderboard'){ var r=lb.click(px,py); if(r==='close') state='main_menu'; }
+            else if(state==='game' && game){ var r=game.click(px,py); if(r==='menu') state='main_menu'; else if(r==='game' && game.over){ var n=prompt('Имя:','Игрок'); if(n) lb.add(n,Math.floor(game.elapsed),game.moves); state='main_menu'; } }
+        } catch(e){ console.error(e); }
+    }
+    cv.addEventListener('mousemove',function(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; mouse.x=(e.clientX-r.left)*sx; mouse.y=(e.clientY-r.top)*sy; });
+    cv.addEventListener('mousedown',function(e){ var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; click((e.clientX-r.left)*sx,(e.clientY-r.top)*sy); });
+    cv.addEventListener('touchstart',function(e){ e.preventDefault(); var t=e.touches[0]; if(!t)return; var r=cv.getBoundingClientRect(); var sx=cv.width/r.width, sy=cv.height/r.height; mouse.x=(t.clientX-r.left)*sx; mouse.y=(t.clientY-r.top)*sy; click(mouse.x,mouse.y); },{passive:false});
+    loop();
+    console.log('🎮 Игра запущена');
+});
+</script>
+</body>
+</html>

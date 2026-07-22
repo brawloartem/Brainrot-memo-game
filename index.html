@@ -38,7 +38,7 @@ function up(s,p){ var st=document.getElementById('load-status'); var b=document.
 up('Загрузка',5);
 
 // ============================================================
-// === ПУТИ (ТВОИ!)
+// === ТВОИ ПУТИ К ФАЙЛАМ (ТОЧНО ПО ТВОИМ НАЗВАНИЯМ)
 // ============================================================
 var IMG_PATH = 'images/';
 var IMG_PREFIX = 'image';
@@ -57,39 +57,59 @@ var BG_MENU = 'images/фон2.png';
 var BG_GAME = 'images/фон1.png';
 
 // ============================================================
-// === ЗАГРУЗКА
+// === ЗАГРУЗКА РЕСУРСОВ
 // ============================================================
 var images={}, sounds={}, bgMusic=null, bgMenu=null, bgGame=null;
 var loaded=0, total=0;
 
 function loadAll(cb){
     total = IMG_COUNT + SND_COUNT + 3 + 1;
+    
+    // 1. Картинки
     for(var i=1;i<=IMG_COUNT;i++){
-        var name=IMG_PREFIX+i+IMG_EXT, img=new Image();
-        img.onload=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
-        img.onerror=function(){ loaded++; if(loaded>=total) cb(); };
-        img.src=IMG_PATH+name; images[name]=img;
+        var name = IMG_PREFIX+i+IMG_EXT;
+        var img = new Image();
+        img.onload = function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+        img.onerror = function(){ loaded++; console.warn('❌ Не загружена:', this.src); if(loaded>=total) cb(); };
+        img.src = IMG_PATH+name;
+        images[name]=img;
     }
+    
+    // 2. Звуки
     for(var i=1;i<=SND_COUNT;i++){
-        var name=SND_PREFIX+i+SND_EXT, snd=new Audio();
-        snd.oncanplaythrough=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
-        snd.onerror=function(){ loaded++; if(loaded>=total) cb(); };
-        snd.src=SND_PATH+name; sounds[name]=snd;
+        var name = SND_PREFIX+i+SND_EXT;
+        var snd = new Audio();
+        snd.oncanplaythrough = function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+        snd.onerror = function(){ loaded++; console.warn('❌ Не загружен звук:', this.src); if(loaded>=total) cb(); };
+        snd.src = SND_PATH+name;
+        sounds[name]=snd;
     }
-    var win=new Audio();
-    win.oncanplaythrough=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
-    win.onerror=function(){ loaded++; if(loaded>=total) cb(); };
-    win.src=SND_PATH+'win.ogg'; sounds['win.ogg']=win;
+    
+    // 3. win.ogg
+    var winSound = new Audio();
+    winSound.oncanplaythrough = function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    winSound.onerror = function(){ loaded++; if(loaded>=total) cb(); };
+    winSound.src = SND_PATH+'win.ogg';
+    sounds['win.ogg'] = winSound;
+    
+    // 4. Фоны
+    bgMenu = new Image();
+    bgMenu.onload = function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    bgMenu.onerror = function(){ loaded++; if(loaded>=total) cb(); };
+    bgMenu.src = BG_MENU;
 
-    bgMenu=new Image(); bgMenu.onload=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
-    bgMenu.onerror=function(){ loaded++; if(loaded>=total) cb(); }; bgMenu.src=BG_MENU;
+    bgGame = new Image();
+    bgGame.onload = function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    bgGame.onerror = function(){ loaded++; if(loaded>=total) cb(); };
+    bgGame.src = BG_GAME;
 
-    bgGame=new Image(); bgGame.onload=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
-    bgGame.onerror=function(){ loaded++; if(loaded>=total) cb(); }; bgGame.src=BG_GAME;
-
-    bgMusic=new Audio(); bgMusic.loop=true; bgMusic.volume=0.3;
-    bgMusic.oncanplaythrough=function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
-    bgMusic.onerror=function(){ loaded++; if(loaded>=total) cb(); }; bgMusic.src=MUSIC_PATH+MUSIC_FILE;
+    // 5. Музыка
+    bgMusic = new Audio();
+    bgMusic.loop = true;
+    bgMusic.volume = 0.3;
+    bgMusic.oncanplaythrough = function(){ loaded++; up('Загрузка... '+loaded+'/'+total, Math.floor(loaded/total*100)); if(loaded>=total) cb(); };
+    bgMusic.onerror = function(){ loaded++; if(loaded>=total) cb(); };
+    bgMusic.src = MUSIC_PATH+MUSIC_FILE;
 }
 
 // ============================================================
@@ -98,13 +118,21 @@ function loadAll(cb){
 function Card(x,y,pairId,w,h){
     this.x=x; this.y=y; this.w=w; this.h=h; this.pairId=pairId;
     this.flipped=false; this.matched=false;
-    this.img=images[IMG_PREFIX+(pairId+1)+IMG_EXT]||null;
-    this.snd=sounds[SND_PREFIX+(pairId+1)+SND_EXT]||null;
+    this.img = images[IMG_PREFIX+(pairId+1)+IMG_EXT] || null;
+    this.snd = sounds[SND_PREFIX+(pairId+1)+SND_EXT] || null;
 }
 Card.prototype.draw=function(ctx){
     var r=sc(10);
-    if(this.matched){ ctx.fillStyle=rgb(COL.GREEN); this.rr(ctx,r); ctx.fill(); if(this.img) try{ ctx.drawImage(this.img,this.x+sc(5),this.y+sc(5),this.w-sc(10),this.h-sc(10)); }catch(e){} return; }
-    if(this.flipped){ ctx.fillStyle=rgb(COL.CARD_FRONT); this.rr(ctx,r); ctx.fill(); if(this.img) try{ ctx.drawImage(this.img,this.x+sc(5),this.y+sc(5),this.w-sc(10),this.h-sc(10)); }catch(e){} return; }
+    if(this.matched){
+        ctx.fillStyle=rgb(COL.GREEN); this.rr(ctx,r); ctx.fill();
+        if(this.img) try{ ctx.drawImage(this.img,this.x+sc(5),this.y+sc(5),this.w-sc(10),this.h-sc(10)); }catch(e){}
+        return;
+    }
+    if(this.flipped){
+        ctx.fillStyle=rgb(COL.CARD_FRONT); this.rr(ctx,r); ctx.fill();
+        if(this.img) try{ ctx.drawImage(this.img,this.x+sc(5),this.y+sc(5),this.w-sc(10),this.h-sc(10)); }catch(e){}
+        return;
+    }
     ctx.fillStyle=rgb(COL.CARD_BACK); this.rr(ctx,r); ctx.fill();
     ctx.strokeStyle=rgb(COL.CARD_FRONT); ctx.lineWidth=sc(3); this.rr(ctx,r); ctx.stroke();
     ctx.fillStyle=rgb(COL.CARD_BACK); ctx.font='bold '+sc(50)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('?',this.x+this.w/2,this.y+this.h/2);
@@ -199,10 +227,10 @@ MainMenu.prototype.click=function(px,py){
 // ============================================================
 function DiffMenu(){
     this.opts=[
-        {t:'Лёгкий', r:3, c:4, s:true},
-        {t:'Средний', r:4, c:4, s:false},
-        {t:'Сложный', r:4, c:5, s:false},
-        {t:'Эксперт', r:5, c:6, s:false}
+        {t:'Лёгкий (3x4)', r:3, c:4, s:true},
+        {t:'Средний (4x4)', r:4, c:4, s:false},
+        {t:'Сложный (4x5)', r:4, c:5, s:false},
+        {t:'Эксперт (5x6)', r:5, c:6, s:false}
     ];
     this.start=null; this.back=null;
 }
